@@ -10,4 +10,6 @@
 		 (:file "config")
 		 (:file "anaphors")
 		 (:file "string")
-		 (:file "system")))
+		 (:file "keywords")
+		 (:file "system"))
+    :depends-on (#:alexandria))

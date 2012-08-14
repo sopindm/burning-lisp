@@ -1,5 +1,5 @@
 (defpackage #:burning-lisp
-  (:use #:common-lisp)
+  (:use #:common-lisp #:alexandria)
   (:export #:*burning-directory*
 	   #:it
 	   #:awhile
@@ -10,7 +10,16 @@
 	   #:lines
 	   #:lines*
 	   #:string+
+
+	   #:check-keywords
+	   #:find-keyword
+	   #:find-keywords
+	   #:remove-keyword
+	   #:remove-keywords
+
 	   #:quit
+
+	   #:copy-hash-table
 
 	   #:&allow-other-keys
 	   #:&aux
