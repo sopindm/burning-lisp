@@ -17,6 +17,12 @@
 	   #:remove-keyword
 	   #:remove-keywords
 
+	   #:lambda-list-keyword-p
+	   #:find-lambda-list-keyword
+	   #:find-lambda-list-keywords
+	   #:remove-lambda-list-keyword
+	   #:remove-lambda-list-keywords
+
 	   #:quit
 
 	   #:copy-hash-table

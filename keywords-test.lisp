@@ -55,5 +55,48 @@
     (?ck (:a) (b))
     (?ck-fail (:a :c) (:a b c :d e f) :d)))
 
-;working with ordirary lambda lists
-;checking macro lambda lists  
+(deftest lambda-list-keyword-p-test
+  (?t (lambda-list-keyword-p '&a-keyword))
+  (?null (lambda-list-keyword-p '&))
+  (?null (lambda-list-keyword-p 'a-symbol)))
+
+(deftest finding-lambda-list-keyword
+  (macrolet ((?fk (keyword list result)
+	       `(?equal (find-lambda-list-keyword ',keyword ',list) ',result)))
+    (?fk &a-keyword (a b c &a-keyword d e f) (d e f))
+    (?fk &some-keyword (a b c &some-keyword d e f &other-keyword g h i) (d e f))
+    (?fk &some-keyword (a b c &first-keyword d e f &some-keyword g h i &lask-keyword) (g h i))
+    (?fk &some-keyword (a b c &some-keyword) ())
+    (?fk nil (a b c &key d e f &other-key g h i) (a b c))))
+
+(deftest finding-lambda-list-keywords
+  (macrolet ((?fk (list rest &rest keyworded)
+	       (labels ((to-assoc (list)
+			  (if (null list) nil
+			      (acons (first list) (second list) (to-assoc (rest (rest list)))))))
+		 `(?equal (find-lambda-list-keywords ',list)
+			  ',(to-assoc (append (list nil rest) keyworded))))))
+    (?fk (a b c &key1 d e f &key2 g h i &key3 &key4 k l m &key5)
+	 (a b c)
+	 &key1 (d e f)
+	 &key2 (g h i)
+	 &key3 ()
+	 &key4 (k l m)
+	 &key5 ())))
+
+(deftest remove-lambda-list-keyword
+  (macrolet ((?rk (keyword list result)
+	       `(?equal (remove-lambda-list-keyword ',keyword ',list) 
+			',result)))
+    (?rk &a (&a) ())
+    (?rk &a (a b c) (a b c))
+    (?rk &a (a b c &a d e f) (a b c))
+    (?rk &a (&a a b c &b d e f) (&b d e f))))
+
+(deftest remove-lambda-list-keywords-test
+  (macrolet ((?rk (list result)
+	       `(?equal (remove-lambda-list-keywords ',list) ',result)))
+    (?rk (a b c) (a b c))
+    (?rk (a b c &a d e f &b g h i) (a b c))
+    (?rk () ())
+    (?rk (&a a b c) ())))
