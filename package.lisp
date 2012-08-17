@@ -23,7 +23,12 @@
 	   #:remove-lambda-list-keyword
 	   #:remove-lambda-list-keywords
 
+	   #:bind-lambda-list
+	   #:check-lambda-list
+
 	   #:quit
+
+	   #:dbind
 
 	   #:copy-hash-table
 

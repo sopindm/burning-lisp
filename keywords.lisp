@@ -37,34 +37,3 @@
     ((and (keywordp (first list)) (rest list)) (remove-keywords (rest (rest list))))
     (t (cons (first list) (remove-keywords (rest list))))))
 
-(defun lambda-list-keyword-p (arg)
-  (and (symbolp arg) 
-       (let ((name (symbol-name arg)))
-	 (and (char= (char name 0) #\&) (> (length name) 1)))))
-
-(defun find-lambda-list-keyword (keyword list)
-  (cond
-    ((null list) nil)
-    ((null keyword) (remove-lambda-list-keywords list))
-    ((eq (first list) keyword) (remove-lambda-list-keywords (rest list)))
-    (t (find-lambda-list-keyword keyword (rest list)))))
-
-(defun find-lambda-list-keywords (list)
-  (if (not (null list))
-      (let ((rest (find-lambda-list-keywords (rest list))))
-	(if (lambda-list-keyword-p (first list))
-	    (acons (first list) (rest (assoc nil rest)) (remove nil rest :key #'first))
-	    (acons nil (cons (first list) (rest (assoc nil rest))) (remove nil rest :key #'first))))))
-
-(defun remove-lambda-list-keyword (keyword list)
-  (cond ((null list) nil)
-	((eq (first list) keyword)
-	 (remove-lambda-list-keyword keyword (member-if #'lambda-list-keyword-p (rest list))))
-	(t (cons (first list) (remove-lambda-list-keyword keyword (rest list))))))
-
-(defun remove-lambda-list-keywords (list)
-  (cond
-    ((null list) nil)
-    ((lambda-list-keyword-p (first list)) nil)
-    (t (cons (first list) (remove-lambda-list-keywords (rest list))))))
-

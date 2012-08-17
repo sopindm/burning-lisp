@@ -11,5 +11,7 @@
 		 (:file "anaphors")
 		 (:file "string")
 		 (:file "keywords")
+		 (:file "destructuring")
+		 (:file "lambda-lists")
 		 (:file "system"))
     :depends-on (#:alexandria))

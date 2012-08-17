@@ -6,5 +6,6 @@
     :licence "PRIVATE"
     :serial t
     :components ((:file "test-package")
-		 (:file "keywords-test"))
+		 (:file "keywords-test")
+		 (:file "lambda-lists-test"))
     :depends-on (#:burning-lisp #:burning-testing))
