@@ -49,8 +49,10 @@
     (?rk (&a a b c) ())))
 
 (defmacro ?bind= (lambda-list arguments &body bindings)
-  `(let ((bound (bind-lambda-list ',lambda-list ',arguments)))
-     (?equal bound ',(mapcar #'(lambda (binding) (cons (first binding) (second binding))) bindings))))
+  (let ((macro-p (eq (first bindings) :macro))
+	(bindings (if (keywordp (first bindings)) (rest bindings) bindings)))
+    `(let ((bound (bind-lambda-list ',lambda-list ',arguments ,@(if macro-p '(:macro-p t)))))
+       (?equal bound ',(mapcar #'(lambda (binding) (cons (first binding) (second binding))) bindings)))))
 
 (deftest binding-normal-lambda-list
   (?bind= (a b) (1 2) 
@@ -86,6 +88,10 @@
     (a 1) (b nil))
   (?bind= (a &rest b) (1 2 3)
     (a 1) (b (2 3))))
+
+(deftest binding-to-list-with-dots
+  (?bind= (a b &rest c) (1 2 . 3)
+	  (a 1) (b 2) (c 3)))
 
 (deftest binding-aux-parameters
   (?bind= (&aux a b) ()
@@ -166,8 +172,8 @@
   (check-lambda-list '(a b c))
   (flet ((check-error (list &optional (error "Wrong lambda list ~a.") (arg list))
 	   (?error (check-lambda-list list) (format nil error arg))))
-    (check-error '(1 2 3))
     (check-error '(:a b c))
+    (check-error '(1 2 3) "Wrong ordinary lambda list ~a.")
     (check-error '((a 1) b c) "Wrong ordinary lambda list ~a.")
     (check-error '((a 2) (b 3) &optional (c 4)) "Wrong ordinary lambda list ~a." '((a 2) (b 3)))))
 
@@ -180,7 +186,8 @@
 	   (?error (check-lambda-list (cons '&optional list))
 		   (format nil "Wrong &optional lambda list ~a." list))))
     (check-error '((a b c d)))
-    (check-error '(((a))))))
+    (check-error '(((a))))
+    (check-error '((a . b)))))
 
 (deftest checking-rest-argument-specs
   (check-lambda-list '(&rest a))
@@ -207,7 +214,9 @@
     (check-error '((a b c d)))
     (check-error '((((a) b))))
     (check-error '(((a (b)))))
-    (check-error '((a b (c d))))))
+    (check-error '((a b (c d))))
+    (check-error '((a b . c)))
+    (check-error '(((a . b))))))
     
 (deftest check-no-arguments-in-allow-other-keys
   (?error (check-lambda-list '(&allow-other-keys))
@@ -222,7 +231,8 @@
 	   (?error (check-lambda-list (cons '&aux list))
 		   (format nil "Wrong &aux lambda list ~a." list))))
     (check-error '((a b c) d))
-    (check-error '(((a) b) c))))
+    (check-error '(((a) b) c))
+    (check-error '((a . b)))))
 
 (deftest checking-that-key-specified-only-once
   (let ((list '(a &optional b &optional c)))
@@ -242,15 +252,38 @@
     (check-error (a b &aux b a) (a b))
     (check-error (a b &optional (c nil a) &rest a &key b a &aux a b) (a b))))
 
-
 (deftest checking-lambda-list-in-bind
   (?error (bind-lambda-list '(&allow-other-keys) '())
 	  (format nil "Wrong lambda list ~a." '(&allow-other-keys))))
 
-;;macro lambda lists (dots too)
+(deftest dotted-lambda-lists-error
+  (?error (check-lambda-list '(a . b))
+	  (format nil "Wrong ordinary lambda list ~a." '(a . b))))
 
-;binding
-;checking
+;;
+;;macro lambda lists
+;;
+
+(deftest binding-macro-lambda-lists
+  (?bind= (a (b c) (d (e (f)))) (1 (2 3) (4 (5 (6)))) :macro
+	  (a 1) (b 2) (c 3) (d 4) (e 5) (f 6))
+  (?bind= (a (b &rest c) (d &key e f) (&optional g h &aux (i a))) (1 (2 3 4) (5 :e 6) (7)) :macro
+	  (a 1) (b 2) (c (3 4)) (d 5) (e 6) (f nil) (g 7) (h nil) (i a)))
+
+(deftest binding-simple-macro-lists-with-dots
+  (?bind= (a b . c) (1 2 3 4 5) :macro
+	  (a 1) (b 2) (c (3 4 5))))
+
+(deftest binding-macro-lists-with-complex-rest
+  (?bind= (a b &rest (c d e &key f)) (1 2 3 4 5 :f 6) :macro
+    (a 1) (b 2) (c 3) (d 4) (e 5) (f 6)))
+
+;additional keywords for macro's
+
+;checking simple macro lists with dots
+;checking tree macro lists
+;checking additional keywords
 
 ;;allowed keywords
+;;denied keywords
 ;;generic lambda lists
