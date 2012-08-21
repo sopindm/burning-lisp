@@ -82,7 +82,7 @@
 
 (define-lambda-keyword-binder nil (list args macro-p generic-p)
   (labels ((no-arguments-error ()
-	     (error "Not enought arguments for lambda list ~a in list ~a." list args))
+	     (error "Not enought arguments for lambda list ~a in ~a." list args))
 	   (bind-one (spec arg)
 	     (cond ((and macro-p (listp spec)) (bind-lambda-list spec arg :macro-p t))
 		   ((and generic-p (listp spec)) (list (cons (first spec) arg)))
@@ -325,7 +325,7 @@
 	(when (and rest (not (or (assoc '&rest keywords)
 				 (assoc '&body keywords)))
 		   (proper-list-p list))
-	  (error "Too much arguments for lambda list ~a in list ~a." list args))
+	  (error "Too much arguments for lambda list ~a in ~a." list args))
 	bindings))))
 
 (defun lambda-list-arguments (list &key macro-p generic-p)
@@ -381,9 +381,6 @@
 	(awhen (find-duplicates names)
 	  (error "Duplicated symbols ~a in lambda list ~a." it list))
 	t))))
-
-  
-
     
       
     

@@ -78,9 +78,9 @@
 
 (deftest binding-normal-lambda-list-errors
   (?bind-error (a b c) (1 2) 
-	       "Not enought arguments for lambda list ~a in list ~a." list args)
+	       "Not enought arguments for lambda list ~a in ~a." list args)
   (?bind-error (a b) (1 2 3)
-	       "Too much arguments for lambda list ~a in list ~a." list args))
+	       "Too much arguments for lambda list ~a in ~a." list args))
 
 (deftest binding-optional-parameters
   (?bind= (a b &optional c) (1 2 3)
@@ -368,4 +368,4 @@
     (check-error (check-lambda-list ()))
     (check-error (lambda-list-arguments ()))))
 
-
+;lambda-list=  
