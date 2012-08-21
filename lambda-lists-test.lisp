@@ -17,19 +17,26 @@
     (?fk nil (a b c &key d e f &other-key g h i) (a b c))))
 
 (deftest finding-lambda-list-keywords
-  (macrolet ((?fk (list rest &rest keyworded)
+  (macrolet ((?fk (list &rest keyworded)
 	       (labels ((to-assoc (list)
 			  (if (null list) nil
 			      (acons (first list) (second list) (to-assoc (rest (rest list)))))))
 		 `(?equal (find-lambda-list-keywords ',list)
-			  ',(to-assoc (append (list nil rest) keyworded))))))
+			  ',(to-assoc keyworded)))))
     (?fk (a b c &key1 d e f &key2 g h i &key3 &key4 k l m &key5)
-	 (a b c)
+	 nil (a b c)
 	 &key1 (d e f)
 	 &key2 (g h i)
 	 &key3 ()
 	 &key4 (k l m)
-	 &key5 ())))
+	 &key5 ())
+    (?fk (&whole a b c)
+	 &whole (a)
+	 nil (b c))
+    (?fk (a b . c)
+	 nil (a b)
+	 burning-lisp::\. (c))))
+	 
 
 (deftest remove-lambda-list-keyword
   (macrolet ((?rk (keyword list result)
@@ -50,8 +57,12 @@
 
 (defmacro ?bind= (lambda-list arguments &body bindings)
   (let ((macro-p (eq (first bindings) :macro))
+	(generic-p (eq (first bindings) :generic))
 	(bindings (if (keywordp (first bindings)) (rest bindings) bindings)))
-    `(let ((bound (bind-lambda-list ',lambda-list ',arguments ,@(if macro-p '(:macro-p t)))))
+    `(let ((bound (bind-lambda-list ',lambda-list ',arguments
+				    ,@(if macro-p '(:macro-p t))
+				    ,@(if generic-p '(:generic-p t)))))
+				    
        (?equal bound ',(mapcar #'(lambda (binding) (cons (first binding) (second binding))) bindings)))))
 
 (deftest binding-normal-lambda-list
@@ -139,9 +150,17 @@
 	       "Wrong key argument ~a. Possible values are ~a." :b '(:a))
   (?bind= (&key &allow-other-keys) (:allow-other-keys nil :a 0)))
 
+(defmacro ?wrong-lambda-list-keywords (list &optional (keywords list))
+  `(?error (check-lambda-list ',list)
+	   (format nil "Wrong lambda list keywords ~a." ',keywords)))
+
 (deftest checking-key-names
-  (?error (check-lambda-list '(&wrong-keyword))
-	  (format nil "Wrong lambda list keywords ~a." '(&wrong-keyword))))
+  (?wrong-lambda-list-keywords (&wrong-keyword)))
+
+(defmacro ?wrong-lambda-list (list 
+			      &optional (error-string "Wrong lambda list ~a.") (error-arguments `(',list)))
+  `(?error (check-lambda-list ',list)
+	   (format nil ,error-string ,@error-arguments)))
 
 (deftest checking-keys-order
   (labels ((to-list (arg)
@@ -157,46 +176,42 @@
 	     (?error (check-lambda-list spec)
 		     (format nil "Wrong lambda list ~a." spec))))
     (check-subsets '(a b &optional c (&rest g) (&key d e &allow-other-keys) (&aux f)))
-    (check-error '(&rest a &optional))
-    (check-error '(&key &optional))
-    (check-error '(&allow-other-keys &optional))
-    (check-error '(&aux &optional))
-    (check-error '(&key &rest a))
-    (check-error '(&allow-other-keys &rest a))
-    (check-error '(&aux &rest a))
-    (check-error '(&allow-other-keys &key))
-    (check-error '(&aux &key))
-    (check-error '(&aux &allow-other-keys))))
+    (?wrong-lambda-list (&rest a &optional))
+    (?wrong-lambda-list (&key &optional))
+    (?wrong-lambda-list (&allow-other-keys &optional))
+    (?wrong-lambda-list (&aux &optional))
+    (?wrong-lambda-list (&key &rest a))
+    (?wrong-lambda-list (&allow-other-keys &rest a))
+    (?wrong-lambda-list (&aux &rest a))
+    (?wrong-lambda-list (&allow-other-keys &key))
+    (?wrong-lambda-list (&aux &key))
+    (?wrong-lambda-list (&aux &allow-other-keys))))
 
 (deftest checking-normal-argument-specs
   (check-lambda-list '(a b c))
-  (flet ((check-error (list &optional (error "Wrong lambda list ~a.") (arg list))
-	   (?error (check-lambda-list list) (format nil error arg))))
-    (check-error '(:a b c))
-    (check-error '(1 2 3) "Wrong ordinary lambda list ~a.")
-    (check-error '((a 1) b c) "Wrong ordinary lambda list ~a.")
-    (check-error '((a 2) (b 3) &optional (c 4)) "Wrong ordinary lambda list ~a." '((a 2) (b 3)))))
+  (?wrong-lambda-list (:a b c))
+  (?wrong-lambda-list (1 2 3) "Wrong ordinary lambda list ~a.")
+  (?wrong-lambda-list ((a 1) b c) "Wrong ordinary lambda list ~a.")
+  (?wrong-lambda-list ((a 2) (b 3) &optional (c 4)) "Wrong ordinary lambda list ~a." ('((a 2) (b 3)))))
 
 (deftest checking-optional-argument-specs
   (check-lambda-list '(a b &optional c d))
   (check-lambda-list '(&optional (c :default) d))
   (check-lambda-list '(&optional (c :default) (d nil d-set-p) e))
   (check-lambda-list '(&optional (c)))
-  (flet ((check-error (list)
-	   (?error (check-lambda-list (cons '&optional list))
-		   (format nil "Wrong &optional lambda list ~a." list))))
-    (check-error '((a b c d)))
-    (check-error '(((a))))
-    (check-error '((a . b)))))
+  (macrolet ((check-error (list)
+	       `(?wrong-lambda-list (&optional ,@list) "Wrong &optional lambda list ~a." (',list))))
+    (check-error ((a b c d)))
+    (check-error (((a))))
+    (check-error ((a . b)))))
 
 (deftest checking-rest-argument-specs
   (check-lambda-list '(&rest a))
-  (flet ((check-error (list)
-	   (?error (check-lambda-list (cons '&rest list))
-		   (format nil "Wrong &rest lambda list ~a." list))))
+  (macrolet ((check-error (list)
+	       `(?wrong-lambda-list (&rest ,@list) "Wrong &rest lambda list ~a." (',list))))
     (check-error ())
-    (check-error '(a b))
-    (check-error '((a)))))
+    (check-error (a b))
+    (check-error ((a)))))
 
 (deftest checking-key-argument-specs
   (check-lambda-list '(&key))
@@ -204,45 +219,38 @@
   (check-lambda-list '(&key a (b nil) (c nil c-p)))
   (check-lambda-list '(&key ((:a a)) b))
   (check-lambda-list '(&key ((:a a) :default a-p) b (c nil c-p)))
-  (flet ((check-error (list)
-	   (?error (check-lambda-list (cons '&key list))
-		   (format nil "Wrong &key lambda list ~a." list))))
-    (check-error '(()))
-    (check-error '(((a))))
-    (check-error '(((a b c))))
-    (check-error '(((a b) c d e)))
-    (check-error '((a b c d)))
-    (check-error '((((a) b))))
-    (check-error '(((a (b)))))
-    (check-error '((a b (c d))))
-    (check-error '((a b . c)))
-    (check-error '(((a . b))))))
+  (macrolet ((check-error (list)
+	       `(?wrong-lambda-list (&key ,@list) "Wrong &key lambda list ~a." (',list))))
+    (check-error (()))
+    (check-error (((a))))
+    (check-error (((a b c))))
+    (check-error (((a b) c d e)))
+    (check-error ((a b c d)))
+    (check-error ((((a) b))))
+    (check-error (((a (b)))))
+    (check-error ((a b (c d))))
+    (check-error ((a b . c)))
+    (check-error (((a . b))))))
     
 (deftest check-no-arguments-in-allow-other-keys
-  (?error (check-lambda-list '(&allow-other-keys))
-	  (format nil "Wrong lambda list ~a." '(&allow-other-keys)))
-  (?error (check-lambda-list '(&key &allow-other-keys a))
-	  (format nil "Wrong arguments ~a after &allow-other-keys." '(a))))
+  (?wrong-lambda-list (&allow-other-keys))
+  (?wrong-lambda-list (&key &allow-other-keys a) "Wrong arguments ~a after &allow-other-keys." ('(a))))
 
 (deftest checking-aux-arguments-spec
   (check-lambda-list '(&aux a b))
   (check-lambda-list '(&aux (a b) (c d)))
-  (flet ((check-error (list)
-	   (?error (check-lambda-list (cons '&aux list))
-		   (format nil "Wrong &aux lambda list ~a." list))))
-    (check-error '((a b c) d))
-    (check-error '(((a) b) c))
-    (check-error '((a . b)))))
+  (macrolet ((check-error (list)
+	       `(?wrong-lambda-list (&aux ,@list) "Wrong &aux lambda list ~a." (',list))))
+    (check-error ((a b c) d))
+    (check-error (((a) b) c))
+    (check-error ((a . b)))))
 
 (deftest checking-that-key-specified-only-once
-  (let ((list '(a &optional b &optional c)))
-    (?error (check-lambda-list list)
-	    (format nil "Wrong lambda list ~a." list))))
+  (?wrong-lambda-list (a &optional b &optional c)))
 
 (deftest checking-argument-names
   (macrolet ((check-error (list args)
-	       `(?error (check-lambda-list ',list)
-			(format nil "Duplicated symbols ~a in lambda list ~a." ',args ',list))))
+	       `(?wrong-lambda-list ,list "Duplicated symbols ~a in lambda list ~a." (',args ',list))))
     (check-error (a b c d a) (a))
     (check-error (a b c &optional d e b) (b))
     (check-error (a b &optional (a nil b)) (a b))
@@ -253,12 +261,10 @@
     (check-error (a b &optional (c nil a) &rest a &key b a &aux a b) (a b))))
 
 (deftest checking-lambda-list-in-bind
-  (?error (bind-lambda-list '(&allow-other-keys) '())
-	  (format nil "Wrong lambda list ~a." '(&allow-other-keys))))
+  (?bind-error (&allow-other-keys) () "Wrong lambda list ~a." '(&allow-other-keys)))
 
 (deftest dotted-lambda-lists-error
-  (?error (check-lambda-list '(a . b))
-	  (format nil "Wrong ordinary lambda list ~a." '(a . b))))
+  (?wrong-lambda-list-keywords (a . b) (\.)))
 
 ;;
 ;;macro lambda lists
@@ -272,18 +278,94 @@
 
 (deftest binding-simple-macro-lists-with-dots
   (?bind= (a b . c) (1 2 3 4 5) :macro
-	  (a 1) (b 2) (c (3 4 5))))
+	  (a 1) (b 2) (c (3 4 5)))
+  (?bind= (a &optional b . c) (1) :macro
+	  (a 1) (b nil) (c nil))
+  (?bind= (a &optional b . c) (1 2) :macro
+	  (a 1) (b 2) (c nil))
+  (?bind= (a &optional b . c) (1 2 3) :macro
+	  (a 1) (b 2) (c (3))))
 
 (deftest binding-macro-lists-with-complex-rest
   (?bind= (a b &rest (c d e &key f)) (1 2 3 4 5 :f 6) :macro
     (a 1) (b 2) (c 3) (d 4) (e 5) (f 6)))
 
-;additional keywords for macro's
+(defmacro ?wrong-macro-lambda-list (list &optional (wrong-list list))
+  `(?error (check-lambda-list ',list :macro-p t)
+	   (format nil "Wrong lambda list ~a." ',wrong-list)))
 
-;checking simple macro lists with dots
-;checking tree macro lists
-;checking additional keywords
+(deftest checking-macro-lambda-lists
+  (?wrong-macro-lambda-list ((&key a &rest b)) (&key a &rest b))
+  (?wrong-macro-lambda-list (&rest (&key a &rest b)) (&key a &rest b)))
 
-;;allowed keywords
-;;denied keywords
-;;generic lambda lists
+(deftest binding-whole-argumnet
+  (?bind= (&whole a (&whole b c d) e f &rest g) ((1 2) 3 4 5) :macro
+	  (a ((1 2) 3 4 5)) (b (1 2)) (c 1) (d 2) (e 3) (f 4) (g (5))))
+
+(deftest binding-whole-argument-with-destructuring
+  (?bind= (&whole (a &rest b) c &rest d) (1 2 3 4 5) :macro
+	  (a 1) (b (2 3 4 5)) (c 1) (d (2 3 4 5))))
+
+(deftest checking-whole-order
+  (?wrong-macro-lambda-list (a &whole b)))
+
+(deftest wrong-ordinary-lambda-list-keywords
+  (?wrong-lambda-list-keywords (&whole a b) (&whole))
+  (?wrong-lambda-list-keywords (a &body b) (&body)))
+
+(deftest boby-binding
+  (?bind= (a &body b) (1 2 3) :macro
+	  (a 1) (b (2 3))))
+
+(deftest body-order-checking
+  (?wrong-macro-lambda-list (&body a &optional b))
+  (?wrong-macro-lambda-list (&key a &body b)))
+
+(deftest body-and-rest-arguments-error
+  (?wrong-macro-lambda-list (&rest a &body b))
+  (?wrong-macro-lambda-list (&body b &rest a)))
+
+(deftest allowed-keywords-checking
+  (check-lambda-list '(a b) :allowed-keywords nil)
+  (macrolet ((check-error (list allowed &rest wrong-keywords)
+	       `(?error (check-lambda-list ',list :allowed-keywords ',allowed)
+			(format nil "Keywords ~a aren't allowed." ',wrong-keywords))))
+    (check-error (a b &optional c &rest d) (&optional) &rest)
+    (check-error (a b &key c) (&optional &rest &body) &key)))
+  
+(deftest allowed-keywords-in-bind
+  (?error (bind-lambda-list '(&optional b c) '(1 2) :allowed-keywords '(&rest &key))
+	  (format nil "Keywords ~a aren't allowed." '(&optional))))
+
+(deftest denied-keywords-checking
+  (?error (check-lambda-list '(a &optional b c) :denied-keywords '(&optional))
+	  (format nil "Keywords ~a are denied." '(&optional))))
+
+(deftest denied-keywords-in-bind
+  (?error (bind-lambda-list '(a &optional b) '(1) :denied-keywords '(&optional))
+	  (format nil "Keywords ~a are denied." '(&optional))))
+
+(deftest arguments-in-generic-lambda-lists
+  (?bind= ((a b) c) (1 2) :generic
+	  (a 1) (c 2))
+  (?bind= ((a (eql (b d e))) c) (1 2) :generic
+	  (a 1) (c 2)))
+
+(deftest generic-lambda-lists-checking
+  (macrolet ((check-error (list)
+	       `(?error (check-lambda-list ',list :generic-p t)
+			(format nil "Wrong ordinary lambda list ~a." ',list))))
+    (check-error (a (b c d)))
+    (check-error (((a a) b) c))
+    (check-error (a (b (c d)) e))
+    (check-error (a (b (eql d e)) f))))
+
+(deftest generic-and-macro-error
+  (macrolet ((check-error ((call &rest args))
+	       `(?error (,call ,@args :generic-p t :macro-p t)
+			(format nil "Lambda list cannot be macro and generic."))))
+    (check-error (bind-lambda-list () ()))
+    (check-error (check-lambda-list ()))
+    (check-error (lambda-list-arguments ()))))
+
+

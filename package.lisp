@@ -25,6 +25,7 @@
 
 	   #:bind-lambda-list
 	   #:check-lambda-list
+	   #:lambda-list-arguments
 
 	   #:quit
 

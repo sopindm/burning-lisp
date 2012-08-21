@@ -14,12 +14,14 @@
 
 (defun find-lambda-list-keywords (list)
   (cond ((null list) nil)
-	((listp (rest list)) (let ((rest (find-lambda-list-keywords (rest list))))
-			       (if (lambda-list-keyword-p (first list))
-				   (acons (first list) (rest (assoc nil rest)) (remove nil rest :key #'first))
-				   (acons nil (cons (first list) (rest (assoc nil rest))) 
-					  (remove nil rest :key #'first)))))
-	(t (acons nil list nil))))
+	((not (listp list)) (acons '\. (list list) nil))
+	((eq (first list) '&whole) (acons '&whole (list (second list))
+					  (find-lambda-list-keywords (rest (rest list)))))
+	(t (let ((rest (find-lambda-list-keywords (rest list))))
+	     (if (lambda-list-keyword-p (first list))
+		 (acons (first list) (rest (assoc nil rest)) (remove nil rest :key #'first))
+		 (acons nil (cons (first list) (rest (assoc nil rest))) 
+			(remove nil rest :key #'first)))))))
 
 (defun remove-lambda-list-keyword (keyword list)
   (cond ((null list) nil)
@@ -78,48 +80,41 @@
 ;; Normal arguments
 ;;
 
-(define-lambda-keyword-binder nil (list args macro-p)
+(define-lambda-keyword-binder nil (list args macro-p generic-p)
   (labels ((no-arguments-error ()
 	     (error "Not enought arguments for lambda list ~a in list ~a." list args))
 	   (bind-one (spec arg)
-	     (if (and (listp spec) macro-p)
-		 (bind-lambda-list spec arg :macro-p t)
-		 (list (cons spec arg))))
+	     (cond ((and macro-p (listp spec)) (bind-lambda-list spec arg :macro-p t))
+		   ((and generic-p (listp spec)) (list (cons (first spec) arg)))
+		   (t (list (cons spec arg)))))
 	   (do-bind (list args)
 	     (cond ((null list) (list nil args))
 		   ((null args) (no-arguments-error))
-		   ((not (listp list)) (list (bind-one list args)
-					     args))
 		   (t (dbind (bindings rest) (do-bind (rest list) (rest args))
 			(list (append (bind-one (first list) (first args)) bindings)
 			      rest))))))
     (do-bind list args)))
 
-(define-lambda-keyword-checker nil (list macro-p)
-  (unless (or (proper-list-p list) macro-p)
+(define-lambda-keyword-checker nil (list macro-p generic-p)
+  (unless (listp list)
     (error "Wrong ordinary lambda list ~a." list))
-  (labels ((check-one (x)
-	     (if (and (listp x) macro-p)
-		 (check-lambda-list x :macro-p t)
-		 (symbolp x)))
-	   (do-check (list)
-	     (cond
-	       ((null list) t)
-	       ((not (listp list)) macro-p)
-	       (t (and (check-one (first list)) (do-check (rest list)))))))
-    (unless (do-check list)
-      (error "Wrong ordinary lambda list ~a." list))))
+  (unless (every (lambda (x)
+		   (cond ((and macro-p (listp x)) (check-lambda-list x :macro-p t))
+			 ((and generic-p (listp x))
+			  (and (= (length x) 2) (symbolp (first x))
+			       (or (symbolp (second x)) (and (listp (second x))
+							     (= (length (second x)) 2)
+							     (eq (first (second x)) 'eql)))))
+			 (t (symbolp x))))
+		 list)
+    (error "Wrong ordinary lambda list ~a." list)))
 
-(define-lambda-keyword-arguments nil (list macro-p) 
-  (labels ((one-args (x)
-	     (if (and (listp x) macro-p)
-		 (lambda-list-arguments x :macro-p t)
-		 (list x)))
-	   (args (list)
-	     (cond ((null list) nil)
-		   ((not (listp list)) (list list))
-		   (t (append (one-args (first list)) (args (rest list)))))))
-    (args list)))
+(define-lambda-keyword-arguments nil (list macro-p generic-p) 
+  (mapcan (lambda (x)
+	    (cond ((and macro-p (listp x)) (lambda-list-arguments x :macro-p t))
+		  ((and generic-p (listp x)) (list (first x)))
+		  (t (list x))))
+	  list))
 
 ;;
 ;; Optional arguments
@@ -155,8 +150,44 @@
     (error "Wrong &optional lambda list ~a." list)))
 
 ;;
-;; Rest arguments
+;; Whole argument
+;; 
+
+(define-lambda-keyword-binder &whole (list args macro-p)
+  (list (if (and macro-p (listp (first list)))
+	    (bind-lambda-list (first list) args)
+	    (list (cons (first list) args)))
+	args))
+
+(define-lambda-keyword-checker &whole (list)
+  (declare (ignore list)))
+
+(define-lambda-keyword-arguments &whole (list macro-p)
+  (if (and macro-p (listp (first list)))
+      (lambda-list-arguments (first list) :macro-p t)
+      (first list)))
+
 ;;
+;; Rest, body and dot arguments
+;;
+
+(define-lambda-keyword-binder \. (list args macro-p)
+  (bind-lambda-list-keyword '&rest list args :macro-p macro-p))
+
+(define-lambda-keyword-checker \. (list macro-p)
+  (check-lambda-list-keyword '&rest list :macro-p macro-p))
+
+(define-lambda-keyword-arguments \. (list macro-p)
+  (lambda-list-keyword-arguments '&rest list :macro-p macro-p))
+
+(define-lambda-keyword-binder &body (list args macro-p)
+  (bind-lambda-list-keyword '&rest list args :macro-p macro-p))
+
+(define-lambda-keyword-checker &body (list macro-p)
+  (check-lambda-list-keyword '&rest list :macro-p macro-p))
+
+(define-lambda-keyword-arguments &body (list macro-p)
+  (lambda-list-keyword-arguments '&rest list :macro-p macro-p))
 
 (define-lambda-keyword-binder &rest (list args macro-p)
   (if (and macro-p (not (symbolp (first list))))
@@ -271,16 +302,19 @@
 ;; Lambda list functions
 ;;
 
-(defun bind-lambda-list (list args &key macro-p (allowed-keywords nil allowed-keywords-p))
-  (declare (ignore allowed-keywords allowed-keywords-p))
-  (check-lambda-list list :macro-p macro-p)
+(defun bind-lambda-list (list args &key macro-p generic-p (allowed-keywords nil allowed-keywords-p) denied-keywords)
+  (check-lambda-list list 
+		     :macro-p macro-p
+		     :generic-p generic-p
+		     :allowed-keywords (if allowed-keywords-p allowed-keywords lambda-list-keywords)
+		     :denied-keywords denied-keywords)
   (let ((keywords (find-lambda-list-keywords list)))
     (labels ((bind-keyword (keyword list args)
 	       (case keyword
 		 (&key (bind-lambda-list-keyword '&key list args :generic-p nil :macro-p nil 
 						 :allow-other-keys (assoc '&allow-other-keys keywords)))
 		 (&allow-other-keys (list nil args))
-		 (otherwise (bind-lambda-list-keyword keyword list args :generic-p nil :macro-p macro-p))))
+		 (otherwise (bind-lambda-list-keyword keyword list args :generic-p generic-p :macro-p macro-p))))
 	     (bind-keywords (keywords args)
 	       (if keywords
 		   (dbind (bindings rest) (bind-keyword (first (first keywords)) (rest (first keywords)) args)
@@ -288,37 +322,55 @@
 		       (list (append bindings rest-bindings) rest)))
 		   (list nil args))))
       (dbind (bindings rest) (bind-keywords keywords args)
-	(when (and rest (not (assoc '&rest keywords)) (proper-list-p list))
+	(when (and rest (not (or (assoc '&rest keywords)
+				 (assoc '&body keywords)))
+		   (proper-list-p list))
 	  (error "Too much arguments for lambda list ~a in list ~a." list args))
 	bindings))))
 
-(defun lambda-list-arguments (list &key macro-p)
+(defun lambda-list-arguments (list &key macro-p generic-p)
+  (when (and macro-p generic-p)
+    (error "Lambda list cannot be macro and generic."))
   (let ((keywords (find-lambda-list-keywords list)))
-    (mapcan (lambda (x) (lambda-list-keyword-arguments (first x) (rest x) :macro-p macro-p)) keywords)))
+    (mapcan (lambda (x) (lambda-list-keyword-arguments (first x) (rest x) :macro-p macro-p :generic-p generic-p)) 
+	    keywords)))
 
-(defun check-lambda-list (list &key macro-p (allowed-keywords nil allowed-keywords-p))
+(defun check-lambda-list (list &key macro-p generic-p (allowed-keywords nil allowed-keywords-p) denied-keywords)
   (unless (listp list)
     (error "Wrong lambda list ~a." list))
+  (when (and macro-p generic-p)
+    (error "Lambda list cannot be macro and generic."))
   (let* ((keywords (find-lambda-list-keywords list))
 	 (names (mapcar #'first keywords)))
     (labels ((check-order (names keys)
 	       (cond ((and (null keys) (not (null names))) (error "Wrong lambda list keywords ~a." names))
-		     ((null keys) t)
+		     ((null names) t)
+		     ((not (member (first names) keys)) 
+		      (error "Wrong lambda list keywords ~a." (list (first names))))
 		     (t (aif (position (first keys) names)
 			     (if (not (= it 0)) (error "Wrong lambda list ~a." list)
 				 (check-order (rest names) keys))
 			     (check-order names (rest keys)))))))
-      (check-order names '(nil &optional &rest &key &allow-other-keys &aux)))
+      (check-order names (append (if macro-p '(&whole))
+				 '(nil &optional)
+				 (if macro-p '(\. &body)) '
+				 (&rest &key &allow-other-keys &aux))))
     (labels ((check-once (names)
 	       (cond
 		 ((null names) t)
 		 ((find (first names) (rest names)) (error "Wrong lambda list ~a." list))
+		 ((and (eq (first names) '&body) (find '&rest names)) (error "Wrong lambda list ~a." list))
 		 (t (check-once (rest names))))))
       (check-once names))
     (when (and (assoc '&allow-other-keys keywords) (not (assoc '&key keywords)))
       (error "Wrong lambda list ~a." list))
-    (mapc (lambda (x) (check-lambda-list-keyword (first x) (rest x) :macro-p macro-p)) keywords)
-    (let ((names (lambda-list-arguments list :macro-p macro-p)))
+    (awhen (and allowed-keywords-p (set-difference (remove-if (lambda (x) (member x '(nil \.))) names) 
+						   allowed-keywords))
+      (error "Keywords ~a aren't allowed." it))
+    (awhen (and denied-keywords (intersection names denied-keywords))
+      (error "Keywords ~a are denied." it))
+    (mapc (lambda (x) (check-lambda-list-keyword (first x) (rest x) :macro-p macro-p :generic-p generic-p)) keywords)
+    (let ((names (lambda-list-arguments list :macro-p macro-p :generic-p generic-p)))
       (unless (every (lambda (x) (and (symbolp x) (not (constantp x)))) names)
 	(error "Wrong lambda list ~a." list))
       (labels ((find-duplicates (names)
