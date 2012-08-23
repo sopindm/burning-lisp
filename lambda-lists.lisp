@@ -37,7 +37,8 @@
 
 (defgeneric bind-lambda-list-keyword (keyword lambda-list arguments &key macro-p generic-p))
 (defgeneric lambda-list-keyword-arguments (keyword lambda-list &key macro-p generic-p))
-(defgeneric check-lambda-list-keyword (keyword lambda-list &key macro-p generic-p))
+(defgeneric check-lambda-list-keyword (keyword lambda-list &key macro-p generic-p allowed-keywords denied-keywords))
+(defgeneric lambda-list-keyword= (keyword lambda-list1 lambda-list2 &key macro-p generic-p))
 
 (defmacro define-lambda-keyword-binder (keyword (list-arg arguments-arg &optional macro-p-arg generic-p-arg 
 							  &rest key-args)
@@ -65,11 +66,32 @@
 				    ,@(if generic-p-arg nil (list generic-p-arg-name))))))
        ,@body)))
 
-(defmacro define-lambda-keyword-checker (keyword (list-arg &optional macro-p-arg generic-p-arg) &body body)
+(defmacro define-lambda-keyword-checker (keyword (list-arg &optional macro-p-arg generic-p-arg 
+							   allowed-keywords-arg denied-keywords-arg)
+					 &body body)
+  (let ((macro-p-arg-name (or macro-p-arg (gensym)))
+	(generic-p-arg-name (or generic-p-arg (gensym)))
+	(allowed-keywords-arg-name (or allowed-keywords-arg (gensym)))
+	(denied-keywords-arg-name (or denied-keywords-arg (gensym)))
+	(keyword-arg (gensym)))
+    `(defmethod check-lambda-list-keyword ((,keyword-arg (eql ',keyword)) ,list-arg
+					   &key 
+					   ((:macro-p ,macro-p-arg-name)) 
+					   ((:generic-p ,generic-p-arg-name))
+					   ((:allowed-keywords ,allowed-keywords-arg-name))
+					   ((:denied-keywords ,denied-keywords-arg-name)))
+       ,@(unless (and macro-p-arg generic-p-arg allowed-keywords-arg denied-keywords-arg)
+		 `((declare (ignore ,@(if macro-p-arg nil (list macro-p-arg-name))
+				    ,@(if generic-p-arg nil (list generic-p-arg-name))
+				    ,@(if allowed-keywords-arg nil (list allowed-keywords-arg-name))
+				    ,@(if denied-keywords-arg nil (list denied-keywords-arg-name))))))
+       ,@body)))
+
+(defmacro define-lambda-keyword= (keyword (list1-arg list2-arg &optional macro-p-arg generic-p-arg) &body body)
   (let ((macro-p-arg-name (or macro-p-arg (gensym)))
 	(generic-p-arg-name (or generic-p-arg (gensym)))
 	(keyword-arg (gensym)))
-    `(defmethod check-lambda-list-keyword ((,keyword-arg (eql ',keyword)) ,list-arg
+    `(defmethod lambda-list-keyword= ((,keyword-arg (eql ',keyword)) ,list1-arg ,list2-arg
 					   &key ((:macro-p ,macro-p-arg-name)) ((:generic-p ,generic-p-arg-name)))
        ,@(unless (and macro-p-arg generic-p-arg)
 		 `((declare (ignore ,@(if macro-p-arg nil (list macro-p-arg-name))
@@ -95,11 +117,13 @@
 			      rest))))))
     (do-bind list args)))
 
-(define-lambda-keyword-checker nil (list macro-p generic-p)
+(define-lambda-keyword-checker nil (list macro-p generic-p allowed-keywords denied-keywords)
   (unless (listp list)
     (error "Wrong ordinary lambda list ~a." list))
   (unless (every (lambda (x)
-		   (cond ((and macro-p (listp x)) (check-lambda-list x :macro-p t))
+		   (cond ((and macro-p (listp x)) (check-lambda-list x :macro-p t 
+								     :allowed-keywords allowed-keywords
+								     :denied-keywords denied-keywords))
 			 ((and generic-p (listp x))
 			  (and (= (length x) 2) (symbolp (first x))
 			       (or (symbolp (second x)) (and (listp (second x))
@@ -115,6 +139,13 @@
 		  ((and generic-p (listp x)) (list (first x)))
 		  (t (list x))))
 	  list))
+
+(define-lambda-keyword= nil (list1 list2 macro-p)
+  (and (= (length list1) (length list2))
+       (or (not macro-p)
+	   (every (lambda (l1 l2) 
+		    (or (and (symbolp l1) (symbolp l2))
+			(and (listp l1) (listp l2) (lambda-list= l1 l2 :macro-p t)))) list1 list2))))
 
 ;;
 ;; Optional arguments
@@ -149,6 +180,9 @@
 		 list)
     (error "Wrong &optional lambda list ~a." list)))
 
+(define-lambda-keyword= &optional (list1 list2)
+  (= (length list1) (length list2)))
+
 ;;
 ;; Whole argument
 ;; 
@@ -159,13 +193,19 @@
 	    (list (cons (first list) args)))
 	args))
 
-(define-lambda-keyword-checker &whole (list)
-  (declare (ignore list)))
+(define-lambda-keyword-checker &whole (list macro-p nil allowed-keywords denied-keywords)
+  (when (and macro-p (listp (first list)))
+    (check-lambda-list (first list) :macro-p t :allowed-keywords allowed-keywords :denied-keywords denied-keywords)))
 
 (define-lambda-keyword-arguments &whole (list macro-p)
   (if (and macro-p (listp (first list)))
       (lambda-list-arguments (first list) :macro-p t)
       (first list)))
+
+(define-lambda-keyword= &whole (l1 l2 macro-p)
+  (or (not macro-p)
+      (and (symbolp (first l1)) (symbolp (first l2)))
+      (lambda-list= (first l1) (first l2) :macro-p t)))
 
 ;;
 ;; Rest, body and dot arguments
@@ -174,20 +214,30 @@
 (define-lambda-keyword-binder \. (list args macro-p)
   (bind-lambda-list-keyword '&rest list args :macro-p macro-p))
 
-(define-lambda-keyword-checker \. (list macro-p)
-  (check-lambda-list-keyword '&rest list :macro-p macro-p))
+(define-lambda-keyword-checker \. (list macro-p nil allowed-keywords denied-keywords)
+  (check-lambda-list-keyword '&rest list :macro-p macro-p 
+			     :allowed-keywords allowed-keywords
+			     :denied-keywords denied-keywords))
 
 (define-lambda-keyword-arguments \. (list macro-p)
   (lambda-list-keyword-arguments '&rest list :macro-p macro-p))
 
+(define-lambda-keyword= \. (list1 list2 macro-p)
+  (lambda-list-keyword= '&rest list1 list2 :macro-p macro-p))
+
 (define-lambda-keyword-binder &body (list args macro-p)
   (bind-lambda-list-keyword '&rest list args :macro-p macro-p))
 
-(define-lambda-keyword-checker &body (list macro-p)
-  (check-lambda-list-keyword '&rest list :macro-p macro-p))
+(define-lambda-keyword-checker &body (list macro-p nil allowed-keywords denied-keywords)
+  (check-lambda-list-keyword '&rest list :macro-p macro-p
+			     :allowed-keywords allowed-keywords
+			     :denied-keywords denied-keywords))
 
 (define-lambda-keyword-arguments &body (list macro-p)
   (lambda-list-keyword-arguments '&rest list :macro-p macro-p))
+
+(define-lambda-keyword= &body (l1 l2 macro-p)
+  (lambda-list-keyword= '&rest l1 l2 :macro-p macro-p))
 
 (define-lambda-keyword-binder &rest (list args macro-p)
   (if (and macro-p (not (symbolp (first list))))
@@ -199,13 +249,20 @@
       (lambda-list-arguments (first list) :macro-p t)
       (list (first list))))
 
-(define-lambda-keyword-checker &rest (list macro-p)
+(define-lambda-keyword-checker &rest (list macro-p nil allowed-keywords denied-keywords)
   (flet ((do-error () (error "Wrong &rest lambda list ~a." list)))
     (unless (= (length list) 1) (do-error))
     (unless (or macro-p (symbolp (first list))) (do-error))
     (if (and macro-p (not (symbolp (first list))))
-	(check-lambda-list (first list) :macro-p t)
+	(check-lambda-list (first list) :macro-p t
+			   :allowed-keywords allowed-keywords 
+			   :denied-keywords denied-keywords)
 	(symbolp (first list)))))
+
+(define-lambda-keyword= &rest (l1 l2 macro-p)
+  (or (not macro-p) 
+      (and (symbolp (first l1)) (symbolp (first l2)))
+      (and (listp (first l1)) (listp (first l2)) (lambda-list= (first l1) (first l2) :macro-p t))))
 
 ;;
 ;; Key arguments
@@ -271,6 +328,22 @@
 		 list)
     (error "Wrong &key lambda list ~a." list))))
 
+(define-lambda-keyword= &key (list1 list2 nil generic-p)
+  (labels ((keywords= (list1 list2)
+	     (cond ((and (null list1) (null list2)) t)
+		   ((null list1) generic-p)
+		   ((null list2) generic-p)
+		   ((find (first list1) list2) (keywords= (rest list1) (remove (first list1) list2)))
+		   ((find (first list2) list1) (keywords= (remove (first list2) list1) (rest list2)))))
+	   (to-keyword (spec)
+	     (if (listp spec)
+		 (if (listp (first spec))
+		     (first (first spec))
+		     (make-keyword (first spec)))
+		 (make-keyword spec))))
+    (keywords= (mapcar #'to-keyword list1) (mapcar #'to-keyword list2))))
+		   
+
 (define-lambda-keyword-arguments &allow-other-keys (list)
   (declare (ignore list))
   nil)
@@ -278,6 +351,10 @@
 (define-lambda-keyword-checker &allow-other-keys (list)
   (unless (null list)
     (error "Wrong arguments ~a after &allow-other-keys." list)))
+
+(define-lambda-keyword= &allow-other-keys (list1 list2)
+  (declare (ignore list1 list2))
+  t)
 
 ;;
 ;; Aux arguments
@@ -297,6 +374,9 @@
 		       (symbolp x)))
 		 list)
     (error "Wrong &aux lambda list ~a." list)))
+
+(define-lambda-keyword= &aux (list1 list2)
+  (= (length list1) (length list2)))
 
 ;;
 ;; Lambda list functions
@@ -335,7 +415,7 @@
     (mapcan (lambda (x) (lambda-list-keyword-arguments (first x) (rest x) :macro-p macro-p :generic-p generic-p)) 
 	    keywords)))
 
-(defun check-lambda-list (list &key macro-p generic-p (allowed-keywords nil allowed-keywords-p) denied-keywords)
+(defun check-lambda-list (list &key macro-p generic-p (allowed-keywords lambda-list-keywords) denied-keywords)
   (unless (listp list)
     (error "Wrong lambda list ~a." list))
   (when (and macro-p generic-p)
@@ -364,12 +444,16 @@
       (check-once names))
     (when (and (assoc '&allow-other-keys keywords) (not (assoc '&key keywords)))
       (error "Wrong lambda list ~a." list))
-    (awhen (and allowed-keywords-p (set-difference (remove-if (lambda (x) (member x '(nil \.))) names) 
-						   allowed-keywords))
+    (awhen (set-difference (remove-if (lambda (x) (member x '(nil \.))) names) 
+			   allowed-keywords)
       (error "Keywords ~a aren't allowed." it))
     (awhen (and denied-keywords (intersection names denied-keywords))
       (error "Keywords ~a are denied." it))
-    (mapc (lambda (x) (check-lambda-list-keyword (first x) (rest x) :macro-p macro-p :generic-p generic-p)) keywords)
+    (mapc (lambda (x) (check-lambda-list-keyword (first x) (rest x)
+						 :macro-p macro-p :generic-p generic-p
+						 :allowed-keywords allowed-keywords
+						 :denied-keywords denied-keywords))
+	  keywords)
     (let ((names (lambda-list-arguments list :macro-p macro-p :generic-p generic-p)))
       (unless (every (lambda (x) (and (symbolp x) (not (constantp x)))) names)
 	(error "Wrong lambda list ~a." list))
@@ -381,6 +465,22 @@
 	(awhen (find-duplicates names)
 	  (error "Duplicated symbols ~a in lambda list ~a." it list))
 	t))))
+
+(defun lambda-list= (list1 list2 &key macro-p generic-p)
+  (check-lambda-list list1 :macro-p macro-p :generic-p generic-p)
+  (check-lambda-list list2 :macro-p macro-p :generic-p generic-p)
+  (let ((keywords1 (find-lambda-list-keywords list1))
+	(keywords2 (find-lambda-list-keywords list2)))
+    (labels ((check-keyword (keyword args1 args2)
+	       (lambda-list-keyword= keyword args1 args2 :macro-p macro-p :generic-p generic-p))
+	     (check-keywords (keys1 keys2)
+	       (acond ((and (null keys1) (null keys2)) t)
+		      ((null keys1) nil)
+		      ((null keys2) nil)
+		      ((assoc (first (first keys1)) keys2)
+		       (and (check-keyword (first (first keys1)) (rest (first keys1)) (rest it))
+			    (check-keywords (rest keys1) (remove (first (first keys1)) keys2 :key #'first)))))))
+      (check-keywords keywords1 keywords2))))
     
       
     

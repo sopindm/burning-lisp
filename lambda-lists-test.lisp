@@ -309,6 +309,9 @@
 (deftest checking-whole-order
   (?wrong-macro-lambda-list (a &whole b)))
 
+(deftest checking-whole-arguments
+  (?wrong-macro-lambda-list (&whole (a &rest b . c) d e) (a &rest b . c)))
+
 (deftest wrong-ordinary-lambda-list-keywords
   (?wrong-lambda-list-keywords (&whole a b) (&whole))
   (?wrong-lambda-list-keywords (a &body b) (&body)))
@@ -345,6 +348,19 @@
   (?error (bind-lambda-list '(a &optional b) '(1) :denied-keywords '(&optional))
 	  (format nil "Keywords ~a are denied." '(&optional))))
 
+(deftest allowed-and-denied-keywords-in-sublists
+  (macrolet ((check-keyword (keyword)
+	       `(progn (?error (check-lambda-list '(,@(if keyword `(,keyword)) (a &optional b))
+						  :macro-p t :denied-keywords '(&optional))
+			       (format nil "Keywords ~a are denied." '(&optional)))
+		       (?error (check-lambda-list '(,@(if keyword `(,keyword)) (a &optional b))
+						  :macro-p t :allowed-keywords '(,keyword))
+			       (format nil "Keywords ~a aren't allowed." '(&optional))))))
+    (check-keyword nil)
+    (check-keyword &rest)
+    (check-keyword &body)
+    (check-keyword &whole)))
+
 (deftest arguments-in-generic-lambda-lists
   (?bind= ((a b) c) (1 2) :generic
 	  (a 1) (c 2))
@@ -368,4 +384,52 @@
     (check-error (check-lambda-list ()))
     (check-error (lambda-list-arguments ()))))
 
-;lambda-list=  
+(define-equality-check lambda-list=)
+
+(deftest lambda-list=-for-normal-lists
+  (?lambda-list= '(a b c) '(d e f))
+  (?not (lambda-list= '(a b c) '(a b)))
+  (?not (lambda-list= '(a b) '(a b c)))
+  (?not (lambda-list= '((a b c) (d e f)) '((a b) (d e f)) :macro-p t))
+  (?t (lambda-list= '((a b) c e) '((e f) g h) :macro-p t)))
+
+(deftest lambda-list=-for-optional-args
+  (?lambda-list= '(a b &optional (c c) (d default)) '(c d &optional e (f other)))
+  (?not (lambda-list= '(a &optional b c) '(a &optional b))))
+
+(deftest lambda-list=-for-whole-arg
+  (?t (lambda-list= '(&whole a b c) '(&whole d e f) :macro-p t))
+  (?not (lambda-list= '(&whole (a b c) d e f) '(&whole (a b &rest c) d e f) :macro-p t)))
+      
+(deftest lambda-list=-for-rest-arg
+  (?t (lambda-list= '(a &rest b) '(c &rest d)))
+  (?t (lambda-list= '(a &rest (b c d)) '(e &rest (f g h)) :macro-p t))
+  (?not (lambda-list= '(a &rest (b . c)) '(a &rest (b)) :macro-p t))
+  (?not (lambda-list= '(a &rest b) '(a &rest (b)) :macro-p t)))
+
+(deftest lambda-list=-for-dot-and-body
+  (?t (lambda-list= '(a . b) '(c . d) :macro-p t))
+  (?not (lambda-list= '(a . b) '(c &rest d) :macro-p t))
+  (?t (lambda-list= '(a &body (b c d)) '(b &body (c d e)) :macro-p t))
+  (?not (lambda-list= '(a &body (b c)) '(a &body (c d e)) :macro-p t)))
+
+(deftest lambda-list=-for-key-arguments
+  (?t (lambda-list= '(&key a b c) '(&key b c a)))
+  (?t (lambda-list= '(&key ((:a b)) ((:b c)) ((:c a))) '(&key c b a)))
+  (?not (lambda-list= '(&key a b) '(&key ((:b a)) ((:c b)))))
+  (?not (lambda-list= '(&key a b c) '(&key a b)))
+  (?t (lambda-list= '(&key a b c) '(&key b a) :generic-p t))
+  (?not (lambda-list= '(&key a b c) '(&key a b d) :generic-p t)))
+
+(deftest allow-other-keys-in-lambda-list=
+  (?t (lambda-list= '(&key a &allow-other-keys) '(&key a &allow-other-keys)))
+  (?not (lambda-list= '(&key a &allow-other-keys) '(&key a))))
+
+(deftest lambda-list=-for-aux-arguments
+  (?t (lambda-list= '(a b c &aux d e) '(d e f &aux a b)))
+  (?not (lambda-list= '(a b &aux d e f) '(e a &aux b l))))
+
+(deftest checking-same-keywords-in-lambda-list=
+  (?not (lambda-list= '(a b &optional c) '(e f))))
+
+
