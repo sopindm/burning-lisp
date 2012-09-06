@@ -1,3 +1,3 @@
 (in-package #:burning-lisp)
 
-(defparameter *burning-directory* #P"~/burning/")
+(defparameter *burning-directory* "~/burning/")
