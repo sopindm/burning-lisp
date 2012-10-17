@@ -13,5 +13,6 @@
 		 (:file "keywords")
 		 (:file "destructuring")
 		 (:file "lambda-lists")
+		 (:file "double-list")
 		 (:file "system"))
     :depends-on (#:alexandria))

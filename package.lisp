@@ -7,6 +7,13 @@
 	   #:aif
 	   #:acond
 
+	   #:make-double-list
+	   #:copy-double-list
+	   #:double-list-head
+	   #:double-list-tail
+	   #:double-list-last
+	   #:double-list-push
+
 	   #:lines
 	   #:lines*
 	   #:string+
