@@ -1,6 +1,9 @@
 (defpackage #:burning-lisp
   (:use #:common-lisp #:alexandria)
   (:export #:*burning-directory*
+
+	   #:define-merged-package
+
 	   #:it
 	   #:awhile
 	   #:awhen

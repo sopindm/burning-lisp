@@ -7,6 +7,7 @@
     :licence "GPL v3"
     :serial t
     :components ((:file "package")
+		 (:file "packages")
 		 (:file "config")
 		 (:file "anaphors")
 		 (:file "string")
