@@ -1,13 +1,15 @@
 (in-package #:burning-lisp)
 
-(defstruct (double-list (:copier nil))
+(defstruct (double-list (:copier nil) (:constructor %make-double-list))
   head
   tail)
 
+(defun make-double-list (list)
+  (%make-double-list :head list
+		     :tail (last list)))
+
 (defun copy-double-list (list)
-  (let ((dlist (make-double-list)))
-    (mapc (lambda (elt) (double-list-push elt dlist)) (double-list-head list))
-    dlist))
+  (make-double-list (double-list-head list)))
 
 (defun double-list-last (list)
   (first (double-list-tail list)))
@@ -23,3 +25,5 @@
 	  (setf tail new))))
   list)
 
+(defun double-list-remove (value list &key (test #'eql))
+  (make-double-list (remove value (double-list-head list) :test test)))

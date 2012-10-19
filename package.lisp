@@ -16,6 +16,7 @@
 	   #:double-list-tail
 	   #:double-list-last
 	   #:double-list-push
+	   #:double-list-remove
 
 	   #:lines
 	   #:lines*
