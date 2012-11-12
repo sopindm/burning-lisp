@@ -959,7 +959,6 @@
 	   #:use-value
 	   #:values
 	   #:values-list
-	   #:variable
 	   #:vector
 	   #:vector-pop
 	   #:vector-push
