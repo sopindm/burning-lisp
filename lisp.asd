@@ -8,6 +8,7 @@
     :serial t
     :components ((:file "package")
 		 (:file "packages")
+		 (:file "conditions")
 		 (:file "config")
 		 (:file "anaphors")
 		 (:file "string")

@@ -4,7 +4,10 @@
 
 	   #:define-merged-package
 
+	   #:with-restarts
+
 	   #:it
+	   #:while
 	   #:awhile
 	   #:awhen
 	   #:aif

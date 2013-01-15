@@ -4,6 +4,12 @@
   `(let ((it ,expression))
      (when it ,@body)))
 
+(defmacro while (expression &body body)
+  (let ((expr-sym (gensym)))
+    `(do ((,expr-sym ,expression ,expression))
+	 ((null ,expr-sym) t)
+       ,@body)))
+
 (defmacro awhile (expression &body body)
   `(do ((it ,expression ,expression))
        ((null it) t)
