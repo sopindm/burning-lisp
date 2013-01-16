@@ -8,12 +8,12 @@
     :serial t
     :components ((:file "package")
 		 (:file "packages")
+		 (:file "destructuring")
 		 (:file "conditions")
 		 (:file "config")
 		 (:file "anaphors")
 		 (:file "string")
 		 (:file "keywords")
-		 (:file "destructuring")
 		 (:file "lambda-lists")
 		 (:file "double-list")
 		 (:file "system"))
