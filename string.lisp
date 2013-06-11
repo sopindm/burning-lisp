@@ -19,4 +19,20 @@
 (defun string+ (&rest strings)
   (apply #'concatenate 'string strings))
 
+(defun search-and-replace (where what replace-with &optional (start 0))
+  (let ((pos (search what where :start2 start)))
+    (if pos
+	(values (string+ (subseq where 0 pos)
+			 replace-with
+			 (subseq where (+ pos (length what))))
+		(+ pos (length replace-with)))
+	(values where (length where)))))
+	
 
+(defun search-and-replace-all (where what replace-with &optional (start 0))
+  (multiple-value-bind (string pos) (search-and-replace where what replace-with start)
+    (if (= pos (length string))
+	string
+	(search-and-replace-all string what replace-with pos))))
+  
+		 

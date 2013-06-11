@@ -48,6 +48,8 @@
 
 	   #:copy-hash-table
 
+	   #:named-lambda
+
 	   #:&allow-other-keys
 	   #:&aux
 	   #:&body
@@ -60,7 +62,7 @@
 	   #:**
 	   #:***
 	   #:*break-on-signals*
-	   #:*compile-file-truename*
+	   #:*compile-file-truename
 	   #:*compile-print*
 	   #:*compile-verbose*
 	   #:*debug-io*
@@ -790,7 +792,11 @@
 	   #:sbit
 	   #:scale-float
 	   #:schar
+
 	   #:search
+	   #:search-and-replace
+	   #:search-and-replace-all
+
 	   #:second
 	   #:sequence
 	   #:serious-condition
