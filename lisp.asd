@@ -15,6 +15,7 @@
 		 (:file "string")
 		 (:file "keywords")
 		 (:file "lambda-lists")
+		 (:file "lists")
 		 (:file "double-list")
 		 (:file "system"))
     :depends-on (#:alexandria))

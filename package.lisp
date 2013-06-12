@@ -21,6 +21,9 @@
 	   #:double-list-push
 	   #:double-list-remove
 
+	   #:group
+	   #:every-nth
+
 	   #:lines
 	   #:lines*
 	   #:string+
